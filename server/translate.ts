@@ -48,6 +48,7 @@ export async function translate(text: string, lang: string): Promise<string> {
       throw new TranslateError("Translation isn't set up on this server yet. Add ANTHROPIC_API_KEY to .env.", 503);
     }
     if (err instanceof Anthropic.RateLimitError) throw new TranslateError("Too many translations right now. Try again in a minute.", 429);
+    if (err instanceof Anthropic.APIError && /credit balance/i.test(err.message)) throw new TranslateError("The Anthropic account behind this server has no credits left. Add credits in Plans & Billing.", 402);
     if (err instanceof Anthropic.APIError) throw new TranslateError("The translator hit a snag. Try again.", 502);
     // missing credentials surface as a plain Error from the client constructor or request
     if (err instanceof Error && /api ?key|auth/i.test(err.message)) {
@@ -93,6 +94,7 @@ export async function rephrase(text: string, tone: string): Promise<string> {
     if (err instanceof TranslateError) throw err;
     if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) throw new TranslateError("Rephrasing on the server isn't set up (no Anthropic key).", 503);
     if (err instanceof Anthropic.RateLimitError) throw new TranslateError("Too many requests right now. Try again in a minute.", 429);
+    if (err instanceof Anthropic.APIError && /credit balance/i.test(err.message)) throw new TranslateError("The Anthropic account behind this server has no credits left. Add credits in Plans & Billing.", 402);
     if (err instanceof Anthropic.APIError) throw new TranslateError("The rephraser hit a snag. Try again.", 502);
     if (err instanceof Error && /api ?key|auth/i.test(err.message)) throw new TranslateError("Rephrasing on the server isn't set up (no Anthropic key).", 503);
     throw err;
