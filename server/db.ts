@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { backoff, SUMMARY_COLS, type LetterSummary, type Store } from "./store.ts";
 
 export type LetterRow = {
   id: string;
@@ -15,7 +16,7 @@ export type LetterRow = {
   deliver_label: string | null; // "26 October 2027 at 9:00 am", in the writer's time zone
   sealed_at: string;
   created_ip: string;
-  status: "scheduled" | "sent" | "failed";
+  status: "scheduled" | "sent" | "failed" | "cancelled";
   attempts: number;
   last_error: string | null;
   sent_at: string | null;
@@ -69,10 +70,27 @@ export function markSent(id: string) {
 }
 
 export function markFailed(id: string, error: string, attempts: number, giveUp: boolean) {
-  const backoff = new Date(Date.now() + Math.min(2 ** attempts, 48) * 30 * 60_000).toISOString();
+
   db.prepare("UPDATE letters SET attempts = ?, last_error = ?, status = ?, next_try_at = ? WHERE id = ?")
-    .run(attempts, error.slice(0, 500), giveUp ? "failed" : "scheduled", backoff, id);
+    .run(attempts, error.slice(0, 500), giveUp ? "failed" : "scheduled", backoff(attempts), id);
 }
 
 export const recentFromIp = (ip: string, sinceIso: string) =>
   (db.prepare("SELECT COUNT(*) AS n FROM letters WHERE created_ip = ? AND sealed_at >= ?").get(ip, sinceIso) as { n: number }).n;
+
+export const store: Store = {
+  insertLetter: async (l) => insertLetter(l),
+  getLetter: async (id) => getLetter(id),
+  // one process runs the post round here, so no lease is needed
+  claimDue: async (now) => dueLetters(now),
+  markSent: async (id) => markSent(id),
+  markFailed: async (id, error, attempts, giveUp) => markFailed(id, error, attempts, giveUp),
+  recentFromIp: async (ip, since) => recentFromIp(ip, since),
+  makeDue: async (id) => { db.prepare("UPDATE letters SET deliver_at = ?, next_try_at = NULL WHERE id = ? AND status = 'scheduled'").run(new Date().toISOString(), id); },
+  list: async (status, limit) => (status
+    ? db.prepare(`SELECT ${SUMMARY_COLS} FROM letters WHERE status = ? ORDER BY sealed_at DESC LIMIT ?`).all(status, limit)
+    : db.prepare(`SELECT ${SUMMARY_COLS} FROM letters ORDER BY sealed_at DESC LIMIT ?`).all(limit)) as LetterSummary[],
+  counts: async () => Object.fromEntries((db.prepare("SELECT status, COUNT(*) AS n FROM letters GROUP BY status").all() as { status: string; n: number }[]).map((r) => [r.status, r.n])),
+  cancel: async (id) => db.prepare("UPDATE letters SET status = 'cancelled', image = NULL WHERE id = ? AND status IN ('scheduled', 'failed')").run(id).changes > 0,
+  retry: async (id) => db.prepare("UPDATE letters SET status = 'scheduled', attempts = 0, next_try_at = NULL, last_error = NULL WHERE id = ? AND status = 'failed'").run(id).changes > 0,
+};

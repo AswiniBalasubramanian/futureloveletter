@@ -11,12 +11,14 @@ import Landing from "./landing/Landing";
 import { Privacy, Terms, NotFound } from "./Pages";
 
 const App = lazy(() => import("./App"));
+const Admin = lazy(() => import("./Admin"));
 
 function Root() {
   const path = usePath();
   useEffect(() => bind(), []);
   if (path === "/") return <Landing />;
   if (path === "/write") return <Suspense fallback={null}><App /></Suspense>;
+  if (path === "/admin") return <Suspense fallback={null}><Admin /></Suspense>;
   if (path === "/privacy") return <Privacy />;
   if (path === "/terms") return <Terms />;
   return <NotFound />;
