@@ -1,0 +1,37 @@
+# Render blueprint: one always-on web service that serves the site, the API and the delivery scheduler.
+# Letters are kept in SQLite on a persistent disk, so they survive restarts and redeploys.
+services:
+  - type: web
+    name: futureletter
+    runtime: node
+    plan: starter # persistent disks need a paid instance
+    region: singapore
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: letters
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/letters.db
+      - key: MAIL_DIR
+        value: /var/data/mail
+      - key: TRUST_PROXY
+        value: "1"
+      # secrets: Render asks for these when you create the blueprint; they are never stored in git
+      - key: SMTP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
