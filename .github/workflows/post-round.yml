@@ -1,7 +1,8 @@
 # Vercel has no always-on process, so this wakes the post office every 5 minutes
-# to send letters whose moment has come. Needs two repository secrets:
-#   TICK_URL     https://<your-site>/api/tick
+# to send letters whose moment has come. Needs one repository secret:
 #   CRON_SECRET  the same value as CRON_SECRET in the Vercel project
+# TICK_URL (variable or secret) is optional and defaults to the live site.
+# GitHub may run schedules late or skip them, so a minute-level pinger such as cron-job.org is more dependable.
 name: Post round
 on:
   schedule:
@@ -15,8 +16,8 @@ jobs:
     steps:
       - name: Send letters that are due
         env:
-          TICK_URL: ${{ secrets.TICK_URL }}
+          TICK_URL: ${{ vars.TICK_URL || secrets.TICK_URL || 'https://futureloveletter.vercel.app/api/tick' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$TICK_URL" ]; then echo "TICK_URL secret is not set"; exit 1; fi
+          if [ -z "$CRON_SECRET" ]; then echo "::error::Add the CRON_SECRET repository secret (Settings > Secrets and variables > Actions)"; exit 1; fi
           curl -fsS --max-time 90 -H "Authorization: Bearer $CRON_SECRET" "$TICK_URL"
